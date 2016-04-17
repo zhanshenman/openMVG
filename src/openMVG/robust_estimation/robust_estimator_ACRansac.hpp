@@ -38,10 +38,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iterator>
-#include <vector>
-#include <limits>
 #include <iostream>
+#include <iterator>
+#include <limits>
+#include <numeric>
+#include <vector>
 
 #include "openMVG/robust_estimation/rand_sampling.hpp"
 
@@ -123,14 +124,14 @@ static void UniformSample(int sizeSample,
 
 /**
  * @brief ACRANSAC routine (ErrorThreshold, NFA)
- * 
+ *
  * @param[in] kernel model and metric object
  * @param[out] vec_inliers points that fit the estimated model
  * @param[in] nIter maximum number of consecutive iterations
  * @param[out] model returned model if found
  * @param[in] precision upper bound of the precision (squared error)
  * @param[in] bVerbose display console log
- * 
+ *
  * @return (errorMax, minNFA)
  */
 template<typename Kernel>
@@ -153,12 +154,12 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
     precision * kernel.normalizer2()(0,0) * kernel.normalizer2()(0,0);
 
   std::vector<ErrorIndex> vec_residuals(nData); // [residual,index]
+  std::vector<double> vec_residuals_(nData);
   std::vector<size_t> vec_sample(sizeSample); // Sample indices
 
-  // Possible sampling indices (could change in the optimization phase)
+  // Possible sampling indices [0,..,nData] (will change in the optimization phase)
   std::vector<size_t> vec_index(nData);
-  for (size_t i = 0; i < nData; ++i)
-    vec_index[i] = i;
+  std::iota(vec_index.begin(), vec_index.end(), 0);
 
   // Precompute log combi
   double loge0 = log10((double)Kernel::MAX_MODELS * (nData-sizeSample));
@@ -185,21 +186,23 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
     bool better = false;
     for (size_t k = 0; k < vec_models.size(); ++k)  {
       // Residuals computation and ordering
+      kernel.Errors(vec_models[k], vec_residuals_);
       for (size_t i = 0; i < nData; ++i)  {
-        double error = kernel.Error(i, vec_models[k]);
+        const double error = vec_residuals_[i];
         vec_residuals[i] = ErrorIndex(error, i);
       }
       std::sort(vec_residuals.begin(), vec_residuals.end());
 
       // Most meaningful discrimination inliers/outliers
-      ErrorIndex best = bestNFA(sizeSample,
-                                kernel.logalpha0(),
-                                vec_residuals,
-                                loge0,
-                                maxThreshold,
-                                vec_logc_n,
-                                vec_logc_k,
-                                kernel.multError());
+      const ErrorIndex best = bestNFA(
+        sizeSample,
+        kernel.logalpha0(),
+        vec_residuals,
+        loge0,
+        maxThreshold,
+        vec_logc_n,
+        vec_logc_k,
+        kernel.multError());
 
       if (best.first < minNFA /*&& vec_residuals[best.second-1].first < errorMax*/)  {
         // A better model was found
@@ -213,7 +216,7 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
 
         if(bVerbose)  {
           std::cout << "  nfa=" << minNFA
-            << " inliers=" << best.second
+            << " inliers=" << best.second << "/" << nData
             << " precisionNormalized=" << errorMax
             << " precision=" << kernel.unormalizeError(errorMax)
             << " (iter=" << iter;
@@ -253,7 +256,6 @@ std::pair<double, double> ACRANSAC(const Kernel &kernel,
 
   return std::make_pair(errorMax, minNFA);
 }
-
 
 } // namespace robust
 } // namespace openMVG

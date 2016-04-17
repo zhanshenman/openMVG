@@ -24,6 +24,8 @@
 //-- Pixel access is done with operator(y,x)
 //  [2/3/2011 pierre MOULON]
 //---------------------------
+namespace openMVG {
+namespace image {
 
 template <typename T>
 class Image : public Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
@@ -35,7 +37,7 @@ public:
 
   //------------------------------
   //-- Image construction method
-  inline Image() {};
+  inline Image() {Base::resize(0, 0);}
 
   inline Image(int width, int height, bool fInit=true, const T val = T())
   {
@@ -50,7 +52,7 @@ public:
   //------------------------------
 
   //-- Resize overhead
-  inline void resize(int width, int height, bool fInit=true, const T val = T())
+  inline void resize(int width, int height, bool fInit=true, const T val = T(0))
   {
     Base::resize(height, width);
     if (fInit) Base::fill(val);
@@ -86,5 +88,8 @@ public:
 protected :
   //-- Image data are stored by inheritance of a matrix
 };
+
+} // namespace image
+} // namespace openMVG
 
 #endif // OPENMVG_IMAGE_IMAGE_HPP

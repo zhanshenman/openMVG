@@ -17,7 +17,8 @@ namespace geometry {
  * Compute a Scale Rotation and Translation rigid transformation.
  * This transformation provide a distortion-free transformation
  * using the following formulation Xb = S * R * Xa + t.
- * Haralick, Robert, Shapiro, Linda. Computer and Robot Vision book, 1992.
+ * "Least-squares estimation of transformation parameters between two point patterns",
+ * Shinji Umeyama, PAMI 1991, DOI: 10.1109/34.88573
  *
  * \param[in] x1 The first 3xN matrix of euclidean points
  * \param[in] x2 The second 3xN matrix of euclidean points
@@ -36,47 +37,34 @@ static bool FindRTS(const Mat &x1,
   Vec3 * t,
   Mat3 * R)
 {
+  if (x1.cols() < 3 || x2.cols() < 3)
+    return false;
+
   assert(3 == x1.rows());
   assert(3 <= x1.cols());
   assert(x1.rows() == x2.rows());
   assert(x1.cols() == x2.cols());
 
-  const int n = static_cast<int>(x1.cols());
+  // Get the transformation via Umeyama's least squares algorithm. This returns
+  // a matrix of the form:
+  // [ s * R t]
+  // [ 0 1]
+  // from which we can extract the scale, rotation, and translation.
+  const Eigen::Matrix4d transform = Eigen::umeyama(x1, x2, true);
 
-  // Compute scale factor
-  double S1 =0.0, S2=0.0;
-  S1 = (x1.array()*x1.array()).sum();
-  S2 = (x2.array()*x2.array()).sum();
-
-  *S = sqrt(S2/S1);
-
-  // Compute centroid and variance
-  Vec meanx1, meanx2;
-  Vec varx1, varx2;
-  MeanAndVarianceAlongRows(x1, &meanx1, &varx1);
-  MeanAndVarianceAlongRows(x2, &meanx2, &varx2);
-
-  // Compute the n*n correlation matrix
-  Mat p1c(3,n) , p2c(3,n);
-
-  for(int i = 0; i < n; ++i){
-    p1c.col(i) = x1.col(i) - meanx1;
-    p2c.col(i) = x2.col(i) - meanx2;
-  }
-
-  Mat H = p1c * p2c.transpose();
-
-  Eigen::JacobiSVD<Mat> svdObj(H,Eigen::ComputeFullV | Eigen::ComputeFullU);
-  Mat V = svdObj.matrixV();
-  Mat U = svdObj.matrixU();
-  *R = V * U.transpose();
-
-  if( R->determinant() < 0){
+  // Check critical cases
+  *R = transform.topLeftCorner<3, 3>();
+  if (R->determinant() < 0)
     return false;
-  }
+  *S = pow(R->determinant(), 1.0 / 3.0);
+  // Check for degenerate case (if all points have the same value...)
+  if (*S < std::numeric_limits<double>::epsilon())
+    return false;
 
-  //Compute the optimal translation
-  *t = meanx2 - (*S) * (*R) * meanx1;
+  // Extract transformation parameters
+  *S = pow(R->determinant(), 1.0 / 3.0);
+  *R /= *S;
+  *t = transform.topRightCorner<3, 1>();
 
   return true;
 }
